@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import sys
 
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+import pytest
 
 from poetry.core.constraints.version import Version
 
+from poetry.utils.env.python import Python
 from poetry.utils.env.python.providers import PoetryPythonPathProvider
 from poetry.utils.env.python.providers import ShutilWhichPythonProvider
 
@@ -20,6 +24,27 @@ def test_shutil_which_python_provider() -> None:
     pythons = list(provider.find_pythons())
     assert len(pythons) == 1
     assert pythons[0].minor == sys.version_info.minor
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="pyenv shims are POSIX scripts")
+def test_shutil_which_python_provider_skips_broken_shim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # pyenv's shim exists on PATH even when no Python executable is selected.
+    shim = tmp_path / "python"
+    shim.write_text("#!/bin/sh\nexit 127\n", encoding="utf-8")
+    shim.chmod(0o755)
+    monkeypatch.setattr(
+        "poetry.utils.env.python.providers.shutil.which", lambda name: str(shim)
+    )
+    # The fallback finder may locate other interpreters on the test machine.
+    monkeypatch.setattr(
+        "poetry.utils.env.python.manager.findpython.find", lambda name: None
+    )
+
+    assert ShutilWhichPythonProvider.find_python_by_name("python") is None
+    assert list(ShutilWhichPythonProvider().find_pythons()) == []
+    assert Python.get_active_python() is None
 
 
 def test_poetry_python_path_provider_no_pythons() -> None:

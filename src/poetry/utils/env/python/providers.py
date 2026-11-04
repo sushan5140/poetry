@@ -35,7 +35,11 @@ class ShutilWhichPythonProvider(findpython.BaseProvider):  # type: ignore[misc]
     @classmethod
     def find_python_by_name(cls, name: str) -> findpython.PythonVersion | None:
         if path := shutil.which(name):
-            return findpython.PythonVersion(executable=Path(path))
+            python = findpython.PythonVersion(executable=Path(path))
+            # A shim can be on PATH without resolving to a usable interpreter.
+            # Validate it before choosing it as the active Python (see #10343).
+            if python.is_valid():
+                return python
         return None
 
 
